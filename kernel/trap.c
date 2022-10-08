@@ -233,21 +233,27 @@ int cowfault(pagetable_t pagetable, uint64 va)
 {
   if (va >= MAXVA)
     return -1;
+  
   pte_t *pte = walk(pagetable, va, 0);
+  
   if (pte == 0)
     return -1;
-  if ((*pte & PTE_U) == 0 || (*pte & PTE_V) == 0)
+  
+  if ((*pte & PTE_U) == 0 || (*pte & PTE_V) == 0)   // not a user page or not valid
     return -1;
-  uint64 pa1 = PTE2PA(*pte);
-  uint64 pa2 = (uint64)kalloc();
-  if (pa2 == 0){
-    //panic("cow panic kalloc");
+  
+  uint64 pa = PTE2PA(*pte);
+  uint64 pa_new = (uint64)kalloc();
+  
+  if (pa_new == 0){
+    //panic("cow panic");
     return -1;
   }
  
-  memmove((void *)pa2, (void *)pa1, PGSIZE);
-  *pte = PA2PTE(pa2) | PTE_U | PTE_V | PTE_W | PTE_X|PTE_R;
-  // kfree((void *)pa1);
-  decrease_num_ref(pa1);
+  memmove((void *)pa_new, (void *)pa, PGSIZE);
+  *pte = PA2PTE(pa_new) | PTE_U | PTE_V | PTE_W | PTE_X|PTE_R;  // give all permissions to the new page
+  // kfree((void *)pa);
+  decrease_num_ref(pa);
+  
   return 0;
 }
