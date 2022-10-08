@@ -16,6 +16,8 @@ void kernelvec();
 
 extern int devintr();
 
+int cowfault(pagetable_t pagetable, uint64 va);
+
 void
 trapinit(void)
 {
@@ -65,7 +67,15 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } 
+  else if (r_scause() == 15) {
+    // page fault due to cow
+    if ((cowfault(p->pagetable, r_stval()) )< 0)
+    {
+       p->killed = 1;
+    }
+  } 
+  else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -219,3 +229,25 @@ devintr()
   }
 }
 
+int cowfault(pagetable_t pagetable, uint64 va)
+{
+  if (va >= MAXVA)
+    return -1;
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte == 0)
+    return -1;
+  if ((*pte & PTE_U) == 0 || (*pte & PTE_V) == 0)
+    return -1;
+  uint64 pa1 = PTE2PA(*pte);
+  uint64 pa2 = (uint64)kalloc();
+  if (pa2 == 0){
+    //panic("cow panic kalloc");
+    return -1;
+  }
+ 
+  memmove((void *)pa2, (void *)pa1, PGSIZE);
+  *pte = PA2PTE(pa2) | PTE_U | PTE_V | PTE_W | PTE_X|PTE_R;
+  // kfree((void *)pa1);
+  decrease_num_ref(pa1);
+  return 0;
+}

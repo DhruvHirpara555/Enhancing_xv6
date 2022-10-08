@@ -185,7 +185,9 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
+      decrease_num_ref(pa);
+      // kfree((void*)pa);
+
     }
     *pte = 0;
   }
@@ -240,7 +242,8 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
-      kfree(mem);
+      // kfree(mem);
+      decrease_num_ref((uint64)mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -283,7 +286,8 @@ freewalk(pagetable_t pagetable)
       panic("freewalk: leaf");
     }
   }
-  kfree((void*)pagetable);
+  // kfree((void*)pagetable);
+  decrease_num_ref((uint64)pagetable);
 }
 
 // Free user memory pages,
@@ -319,6 +323,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     flags = PTE_FLAGS(*pte);
     
     flags &= (~PTE_W);    // make it read-only
+
+    // increase ref count
+    increase_num_ref(pa);
 
     ///////////////////////////////////   to do : make a data structure to count the number of processes sharing a page and free the page only when the count is 0
     ///////////////////////////////////   to do : flush the TLB
@@ -361,6 +368,11 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    if (va0 > MAXVA)
+      return -1;    
+    if(cowfault(pagetable,va0)<0){
+	    return -1;
+    }
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
