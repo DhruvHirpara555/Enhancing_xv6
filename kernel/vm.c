@@ -326,10 +326,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
     // increase ref count
     increase_num_ref(pa);
-
-    ///////////////////////////////////   to do : make a data structure to count the number of processes sharing a page and free the page only when the count is 0
-    ///////////////////////////////////   to do : flush the TLB
-
+    // flush tlb
+    sfence_vma();
+    
     // if((mem = kalloc()) == 0)        // these are removed because we don't need to allocate new physical memory (to revert, pass (uint64)mem in place of pa in mappages)
       // goto err;
     // memmove(mem, (char*)pa, PGSIZE);
