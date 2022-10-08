@@ -308,7 +308,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -317,11 +317,17 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    
+    flags &= (~PTE_W);    // make it read-only
+
+    ///////////////////////////////////   to do : make a data structure to count the number of processes sharing a page and free the page only when the count is 0
+    ///////////////////////////////////   to do : flush the TLB
+
+    // if((mem = kalloc()) == 0)        // these are removed because we don't need to allocate new physical memory (to revert, pass (uint64)mem in place of pa in mappages)
+      // goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      // kfree(mem);        // removed for copy-on-write
       goto err;
     }
   }
