@@ -102,6 +102,8 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_trace(void);
+extern uint64 sys_sigalarm(void);
+extern uint64 sys_sigreturn(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -128,6 +130,8 @@ static uint64 (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_trace]   sys_trace,
+[SYS_sigalarm] sys_sigalarm,
+[SYS_sigreturn] sys_sigreturn,
 };
 
 
@@ -154,6 +158,8 @@ char* syscallnames[] = {
   [SYS_mkdir]   "mkdir",
   [SYS_close]   "close",
   [SYS_trace]   "trace",
+  [SYS_sigalarm] "sigalarm",
+  [SYS_sigreturn] "sigreturn",
 };
 
 int syscallargs[] = {
@@ -179,6 +185,8 @@ int syscallargs[] = {
   [SYS_mkdir]   1,
   [SYS_close]   1,
   [SYS_trace]   1,
+  [SYS_sigalarm] 2,
+  [SYS_sigreturn] 0,
 };
 
 
@@ -193,9 +201,9 @@ syscall(void)
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
-    int firstarg = argraw(0);
-    p->trapframe->a0 = syscalls[num]();
+    uint64 firstarg = argraw(0);
 
+    p->trapframe->a0 = syscalls[num]();
     if(p->mask & (1 << num)) {
       //print the pid, syscall number, syscall name, arguments, and return value
       printf("%d: syscall %d %s(", p->pid, num, syscallnames[num]);
@@ -214,4 +222,9 @@ syscall(void)
             p->pid, p->name, num);
     p->trapframe->a0 = -1;
   }
+
+  if(num == SYS_sigreturn) {
+    p->trapframe->a0 = p->a0_backup;
+  }
+
 }

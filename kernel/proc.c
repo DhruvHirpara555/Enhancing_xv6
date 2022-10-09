@@ -145,6 +145,11 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  p->alarm_flag = 0;
+  p->alarm_ticks = 0;
+  p->current_ticks = 0;
+  p->alarm_handler = 0;
+
 
   return p;
 }
@@ -688,4 +693,47 @@ trace(uint mask){
   // acquire(&p->lock);
   p->mask = mask;
   // release(&p->lock);
+}
+
+void
+sigalarm(uint64 ticks, void (*handler)(void)){
+  struct proc *p = myproc();
+  p->alarm_ticks = ticks;
+  p->alarm_handler = handler;
+  p->alarm_flag = 1;
+  // p->trapframe->a0 = p->a0_backup;
+
+
+}
+
+void
+sigreturn(){
+  struct proc *p = myproc();
+
+
+  // restore the registers
+  p->trapframe_backup->kernel_hartid = p->trapframe->kernel_hartid;
+  p->trapframe_backup->kernel_satp = p->trapframe->kernel_satp;
+  p->trapframe_backup->kernel_trap = p->trapframe->kernel_trap;
+  p->trapframe_backup->kernel_sp = p->trapframe->kernel_sp;
+  // p->trapframe_backup->a0 = p->trapframe->a0;
+  memmove(p->trapframe, p->trapframe_backup, sizeof(struct trapframe));
+
+
+
+  // free the backup
+  kfree(p->trapframe_backup);
+  p->trapframe_backup = 0;
+  p->alarm_flag = 1;
+  p->current_ticks = 0;
+
+  if(p->alarm_ticks ==0 && p->alarm_handler == 0){
+
+    p->alarm_flag =0;
+  }
+  p->a0_backup = p->trapframe->a0;
+  return;
+  // return;
+
+
 }

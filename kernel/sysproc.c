@@ -98,3 +98,22 @@ sys_trace(void)
   trace(mask);
   return 0;
 }
+
+uint64
+sys_sigalarm(void)
+{
+  int ticks;
+  void (*handler)(void);
+  argint(0, &ticks);
+  argaddr(1, (uint64*)&handler);
+  sigalarm(ticks, handler);
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  sigreturn();
+  return 0;
+}
+

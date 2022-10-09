@@ -104,5 +104,12 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-  uint32 mask;                 // signal to trace mask 
+  uint32 mask;                 // signal to trace mask
+  uint64 alarm_ticks;                // alarm time
+  uint64 current_ticks;             // current time
+  int alarm_flag;               // alarm flag
+  struct trapframe *trapframe_backup; // backup trapframe
+  void (*alarm_handler)(void); // default alarm handler
+  uint64 a0_backup; // backup a0_register
+
 };
