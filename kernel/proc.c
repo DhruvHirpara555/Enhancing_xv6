@@ -149,6 +149,9 @@ found:
   p->alarm_ticks = 0;
   p->current_ticks = 0;
   p->alarm_handler = 0;
+  acquire(&tickslock);
+  p->start_ticks = ticks;
+  release(&tickslock);
 
 
   return p;
@@ -165,6 +168,8 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  if(p->trapframe_backup)
+    kfree((void*)p->trapframe_backup);
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -174,6 +179,11 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->alarm_flag = 0;
+  p->alarm_ticks = 0;
+  p->current_ticks = 0;
+  p->alarm_handler = 0;
+  p->start_ticks = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -449,32 +459,84 @@ wait(uint64 addr)
 void
 scheduler(void)
 {
-  struct proc *p;
+  // struct proc *p;
   struct cpu *c = mycpu();
 
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
+    fcfs_scheduler(c);
+    // for(p = proc; p < &proc[NPROC]; p++) {
+    //   acquire(&p->lock);
+    //   if(p->state == RUNNABLE) {
+    //     // Switch to chosen process.  It is the process's job
+    //     // to release its lock and then reacquire it
+    //     // before jumping back to us.
+    //     p->state = RUNNING;
+    //     c->proc = p;
+    //     swtch(&c->context, &p->context);
 
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-      }
-      release(&p->lock);
-    }
+    //     // Process is done running for now.
+    //     // It should have changed its p->state before coming back.
+    //     c->proc = 0;
+    //   }
+    //   release(&p->lock);
+    // }
   }
 }
+
+void
+fcfs_scheduler(struct cpu *c)
+{
+  struct proc *p;
+  struct proc *min_proc;
+  uint64 min_sticks = -1;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE) {
+      if(min_sticks == -1 || p->start_ticks < min_sticks) {
+        min_proc = p;
+        min_sticks = p->start_ticks;
+      }
+    }
+    release(&p->lock);
+  }
+  if(min_sticks != -1 ){
+    acquire(&min_proc->lock);
+    if(min_proc->state != RUNNABLE) {
+      release(&min_proc->lock);
+      return;
+    }
+    min_proc->state = RUNNING;
+    c->proc = min_proc;
+    swtch(&c->context, &min_proc->context);
+    c->proc = 0;
+    release(&min_proc->lock);
+  }
+}
+
+void round_robin_scheduler(struct cpu *c)
+{
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE) {
+      // Switch to chosen process.  It is the process's job
+      // to release its lock and then reacquire it
+      // before jumping back to us.
+      p->state = RUNNING;
+      c->proc = p;
+      swtch(&c->context, &p->context);
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+    }
+    release(&p->lock);
+  }
+}
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores

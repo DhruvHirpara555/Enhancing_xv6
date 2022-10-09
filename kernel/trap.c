@@ -79,23 +79,23 @@ usertrap(void)
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2){
-    if(p->alarm_flag == 1){
+    // if(p->alarm_flag == 1){
 
-      p->current_ticks++;
+    //   p->current_ticks++;
 
-      // set trapframe
-      if(p->alarm_ticks <= p->current_ticks){
-        p->alarm_flag = 0;
-        struct trapframe *tf= p->trapframe;
-        struct trapframe *tf_backup = (struct trapframe *)kalloc();
-        memmove(tf_backup, tf, sizeof(struct trapframe));
-        p->trapframe_backup = tf_backup;
-        p->trapframe->epc = (uint64 )p->alarm_handler;
-      }
+    //   // set trapframe
+    //   if(p->alarm_ticks <= p->current_ticks){
+    //     p->alarm_flag = 0;
+    //     struct trapframe *tf= p->trapframe;
+    //     struct trapframe *tf_backup = (struct trapframe *)kalloc();
+    //     memmove(tf_backup, tf, sizeof(struct trapframe));
+    //     p->trapframe_backup = tf_backup;
+    //     p->trapframe->epc = (uint64 )p->alarm_handler;
+    //   }
 
 
-    }
-    yield();
+    // }
+    // yield();
   }
 
   usertrapret();

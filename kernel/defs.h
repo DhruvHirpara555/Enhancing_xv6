@@ -109,6 +109,8 @@ void            procdump(void);
 void            trace(uint32 mask);
 void            sigalarm(uint64 ticks, void (*handler)(void));
 void            sigreturn(void);
+void            fcfs_scheduler(struct cpu *c);
+void            round_robin_scheduler(struct cpu *c);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

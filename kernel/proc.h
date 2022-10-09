@@ -96,20 +96,21 @@ struct proc {
   struct proc *parent;         // Parent process
 
   // these are private to the process, so p->lock need not be held.
-  uint64 kstack;               // Virtual address of kernel stack
-  uint64 sz;                   // Size of process memory (bytes)
-  pagetable_t pagetable;       // User page table
-  struct trapframe *trapframe; // data page for trampoline.S
-  struct context context;      // swtch() here to run process
-  struct file *ofile[NOFILE];  // Open files
-  struct inode *cwd;           // Current directory
-  char name[16];               // Process name (debugging)
-  uint32 mask;                 // signal to trace mask
-  uint64 alarm_ticks;                // alarm time
-  uint64 current_ticks;             // current time
-  int alarm_flag;               // alarm flag
+  uint64 kstack;                      // Virtual address of kernel stack
+  uint64 sz;                          // Size of process memory (bytes)
+  pagetable_t pagetable;              // User page table
+  struct trapframe *trapframe;        // data page for trampoline.S
+  struct context context;             // swtch() here to run process
+  struct file *ofile[NOFILE];         // Open files
+  struct inode *cwd;                  // Current directory
+  char name[16];                      // Process name (debugging)
+  uint32 mask;                        // signal to trace mask
+  uint64 alarm_ticks;                 // alarm time
+  uint64 current_ticks;               // current time
+  int alarm_flag;                     // alarm flag
   struct trapframe *trapframe_backup; // backup trapframe
-  void (*alarm_handler)(void); // default alarm handler
-  uint64 a0_backup; // backup a0_register
+  void (*alarm_handler)(void);        // default alarm handler
+  uint64 a0_backup;                   // backup a0_register
+  uint64 start_ticks;                 // start time
 
 };
