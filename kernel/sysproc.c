@@ -117,3 +117,12 @@ sys_sigreturn(void)
   return 0;
 }
 
+uint64
+sys_settickets(void)
+{
+  int tickets;
+  argint(0, &tickets);
+  settickets(tickets);
+  return 0;
+}
+

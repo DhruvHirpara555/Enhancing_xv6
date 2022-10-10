@@ -112,5 +112,11 @@ struct proc {
   void (*alarm_handler)(void);        // default alarm handler
   uint64 a0_backup;                   // backup a0_register
   uint64 start_ticks;                 // start time
+  int tickets;                        // tickets for lottery scheduler
+  uint64 run_ticks;                   // run time from last time it was scheduled
+  uint64 sleep_ticks;                 // sleep time from last time it was scheduled
+  uint64 ready_ticks;                 // ready time from last time it was scheduled
+  uint64 num_scheduled;               // number of times it was scheduled
+  int static_priority;                // static priority
 
 };

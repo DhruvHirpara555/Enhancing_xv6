@@ -149,9 +149,15 @@ found:
   p->alarm_ticks = 0;
   p->current_ticks = 0;
   p->alarm_handler = 0;
-  acquire(&tickslock);
+  p->tickets = 10;
+  p->sleep_ticks = 0;
+  p->run_ticks = 0;
+  p->ready_ticks = 0;
+  p->static_priority = 60;
+  p->num_scheduled = 0;
+  // acquire(&tickslock);
   p->start_ticks = ticks;
-  release(&tickslock);
+  // release(&tickslock);
 
 
   return p;
@@ -184,6 +190,12 @@ freeproc(struct proc *p)
   p->current_ticks = 0;
   p->alarm_handler = 0;
   p->start_ticks = 0;
+  p->tickets = 0;
+  p->sleep_ticks = 0;
+  p->run_ticks = 0;
+  p->ready_ticks = 0;
+  p->static_priority = 0;
+  p->num_scheduled = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -311,6 +323,7 @@ fork(void)
   }
   np->sz = p->sz;
   np->mask = p->mask;
+  np->tickets = p->tickets;
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -389,7 +402,6 @@ exit(int status)
   wakeup(p->parent);
 
   acquire(&p->lock);
-
   p->xstate = status;
   p->state = ZOMBIE;
 
@@ -449,6 +461,21 @@ wait(uint64 addr)
   }
 }
 
+void update_ticks(void){
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->state == RUNNING){
+      p->run_ticks++;
+    }
+    else if(p->state == SLEEPING){
+      p->sleep_ticks++;
+    }
+    else if(p->state == RUNNABLE){
+      p->ready_ticks++;
+    }
+  }
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -466,7 +493,10 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-    fcfs_scheduler(c);
+    // lottery_scheduler(c);
+    // round_robin_scheduler(c);
+    // fcfs_scheduler(c);
+    priority_scheduler(c);
     // for(p = proc; p < &proc[NPROC]; p++) {
     //   acquire(&p->lock);
     //   if(p->state == RUNNABLE) {
@@ -536,8 +566,122 @@ void round_robin_scheduler(struct cpu *c)
     release(&p->lock);
   }
 }
+//implent rand
+int rand(void)
+{
+  static unsigned long int next = 1;
+  next = next * 1103515245 + 12345;
+  return((unsigned)(next/65536) % 32768);
+}
+
+void lottery_scheduler(struct cpu *c)
+{
+  struct proc *p;
+  int total_tickets = 0;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE) {
+      total_tickets += p->tickets;
+    }
+    release(&p->lock);
+  }
+  if(total_tickets == 0) {
+    return;
+  }
+  int tochoose = rand() % total_tickets;
+  int curr = 0;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE) {
+      curr += p->tickets;
+      if(curr >= tochoose) {
+        p->state = RUNNING;
+        c->proc = p;
+        swtch(&c->context, &p->context);
+        c->proc = 0;
+        release(&p->lock);
+        return;
+      }
+    }
+    release(&p->lock);
+  }
+}
+
+int dynamic_priority(struct proc *p)
+{
+  int niceness;
+  if((p->num_scheduled == 0) || ((p->sleep_ticks + p->run_ticks) == 0)){
+    niceness = 5;
+  }
+  else{
+    niceness = p->sleep_ticks/(p->sleep_ticks + p->run_ticks);
+    niceness = niceness * 10;
+  }
+
+  int DP = p->static_priority - niceness + 5;
+  if(DP > 100){
+    DP = 100;
+  }
+  if(DP < 0){
+    DP = 0;
+  }
+  return DP;
+}
+
+void
+priority_scheduler(struct cpu *c)
+{
+  struct proc *p;
+  struct proc *high_proc = 0;
+  // int high_priority = 101;
+  for (p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->state == RUNNABLE){
+
+      // comparing .............
+      if(high_proc == 0){
+        high_proc = p;
+      }
+      else{
+        int high_priority = dynamic_priority(high_proc);
+        int curr_priority = dynamic_priority(p);
+        if(curr_priority < high_priority){
+          high_proc = p;
+        }
+        else if (curr_priority == high_priority) {
+          if(p->num_scheduled < high_proc->num_scheduled){
+            high_proc = p;
+          }
+          else if(p->num_scheduled == high_proc->num_scheduled){
+            if(p->start_ticks < high_proc->start_ticks){
+              high_proc = p;
+            }
+          }
+        }
+      }
+      // ... comparing done
+
+    }
+    release(&p->lock);
+  }
+
+  // scedueling
+  if(high_proc != 0){
+    acquire(&high_proc->lock);
+    if(high_proc->state == RUNNABLE){
+      high_proc->state = RUNNING;
+      c->proc = high_proc;
+      high_proc->num_scheduled++;
+      high_proc->run_ticks = 0;
+      high_proc->sleep_ticks = 0;
+      swtch(&c->context, &high_proc->context);
+      c->proc = 0;
+    }
+    release(&high_proc->lock);
+  }
 
 
+}
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -798,4 +942,11 @@ sigreturn(){
   // return;
 
 
+}
+
+void
+settickets(int number)
+{
+  struct proc *p = myproc();
+  p->tickets = number;
 }

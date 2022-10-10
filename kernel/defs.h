@@ -109,8 +109,14 @@ void            procdump(void);
 void            trace(uint32 mask);
 void            sigalarm(uint64 ticks, void (*handler)(void));
 void            sigreturn(void);
+void            settickets(int);
 void            fcfs_scheduler(struct cpu *c);
 void            round_robin_scheduler(struct cpu *c);
+void            lottery_scheduler(struct cpu *c);
+int             rand(void);
+void            update_ticks(void);
+void            priority_scheduler(struct cpu *c);
+int            dynamic_priority(struct proc *p);
 
 // swtch.S
 void            swtch(struct context*, struct context*);
