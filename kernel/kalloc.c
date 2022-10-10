@@ -133,3 +133,15 @@ void decrease_num_ref(uint64 pa)
 
   release(&kmem.lock);
 }
+
+void acquire_rc_lock() //  Request physical page reference count lock 
+{
+    
+    acquire(&kmem.lock);
+}
+
+void release_rc_lock() //  Release the physical page reference count lock 
+{
+    
+    release(&kmem.lock);
+}

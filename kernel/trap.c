@@ -11,6 +11,11 @@ uint ticks;
 
 extern char trampoline[], uservec[], userret[];
 
+// struct {
+//   struct spinlock lock;
+//   struct run *freelist;
+// } kmem;
+
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
 
@@ -242,6 +247,9 @@ int cowfault(pagetable_t pagetable, uint64 va)
   if ((*pte & PTE_U) == 0 || (*pte & PTE_V) == 0)   // not a user page or not valid
     return -1;
   
+  // if ((*pte & PTE_COW) == 0)                        // not a COW page
+  //   return -1;
+
   uint64 pa = PTE2PA(*pte);
   uint64 pa_new = (uint64)kalloc();
   
@@ -251,8 +259,8 @@ int cowfault(pagetable_t pagetable, uint64 va)
   }
  
   memmove((void *)pa_new, (void *)pa, PGSIZE);
-  *pte = PA2PTE(pa_new) | PTE_U | PTE_V | PTE_W | PTE_X|PTE_R;  // give all permissions to the new page
-  // kfree((void *)pa);
+  *pte = PA2PTE(pa_new) | PTE_U | PTE_V | PTE_W | PTE_X | PTE_R;  // give all permissions to the new page
+  
   decrease_num_ref(pa);
   
   return 0;

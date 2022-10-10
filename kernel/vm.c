@@ -5,6 +5,7 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+// #include "spinlock.h"
 
 /*
  * the kernel's page table.
@@ -321,7 +322,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    
+    flags |= PTE_COW;   // copy on write
     flags &= (~PTE_W);    // make it read-only
 
     // increase ref count
@@ -369,9 +370,10 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     va0 = PGROUNDDOWN(dstva);
     if (va0 > MAXVA)
       return -1;    
-    if(cowfault(pagetable,va0)<0){
-	    return -1;
-    }
+    // if(cowfault(pagetable,va0)<0){
+	  //   return -1;
+    // }
+
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;

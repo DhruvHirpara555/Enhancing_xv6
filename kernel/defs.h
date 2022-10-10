@@ -65,6 +65,8 @@ void            kfree(void *);
 void            kinit(void);
 void            increase_num_ref(uint64 pa);
 void            decrease_num_ref(uint64 pa);
+void            acquire_rc_lock();
+void            release_rc_lock();
 
 // log.c
 void            initlog(int, struct superblock*);
