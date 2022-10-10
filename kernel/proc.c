@@ -494,9 +494,9 @@ scheduler(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
     // lottery_scheduler(c);
-    // round_robin_scheduler(c);
+    round_robin_scheduler(c);
     // fcfs_scheduler(c);
-    priority_scheduler(c);
+    // priority_scheduler(c);
     // for(p = proc; p < &proc[NPROC]; p++) {
     //   acquire(&p->lock);
     //   if(p->state == RUNNABLE) {
@@ -505,7 +505,7 @@ scheduler(void)
     //     // before jumping back to us.
     //     p->state = RUNNING;
     //     c->proc = p;
-    //     swtch(&c->context, &p->context);
+        // swtch(&c->context, &p->context);
 
     //     // Process is done running for now.
     //     // It should have changed its p->state before coming back.
