@@ -74,10 +74,13 @@ usertrap(void)
     syscall();
   } 
   else if (r_scause() == 15) {
-    // page fault due to cow
+    // page fault
     if ((cowfault(p->pagetable, r_stval()) )< 0)
     {
-       p->killed = 1;
+      //  p->killed = 1;
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      setkilled(p);
     }
   } 
   else if((which_dev = devintr()) != 0){
@@ -153,6 +156,8 @@ kerneltrap()
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
+
+  struct proc *p = myproc();
   
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
@@ -164,6 +169,16 @@ kerneltrap()
     printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
     panic("kerneltrap");
   }
+  if (r_scause() == 15) {
+    // page fault
+    if ((cowfault(p->pagetable, r_stval()) )< 0)
+    {
+      //  p->killed = 1;
+      printf("kerneltrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      setkilled(p);
+    }
+  } 
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
@@ -239,6 +254,13 @@ int cowfault(pagetable_t pagetable, uint64 va)
   if (va >= MAXVA)
     return -1;
   
+  if (va == 0)
+    return -1;
+  
+  // check for segfault
+
+  // va = PGROUNDDOWN(va);
+  
   pte_t *pte = walk(pagetable, va, 0);
   
   if (pte == 0)
@@ -247,20 +269,63 @@ int cowfault(pagetable_t pagetable, uint64 va)
   if ((*pte & PTE_U) == 0 || (*pte & PTE_V) == 0)   // not a user page or not valid
     return -1;
   
-  // if ((*pte & PTE_COW) == 0)                        // not a COW page
-  //   return -1;
+  if ((*pte & PTE_COW) == 0)                        // not a COW page
+    return 0;
 
   uint64 pa = PTE2PA(*pte);
   uint64 pa_new = (uint64)kalloc();
   
   if (pa_new == 0){
-    //panic("cow panic");
     return -1;
   }
+
  
   memmove((void *)pa_new, (void *)pa, PGSIZE);
   *pte = PA2PTE(pa_new) | PTE_U | PTE_V | PTE_W | PTE_X | PTE_R;  // give all permissions to the new page
+  *pte &= ~PTE_COW;                                                 // remove COW flag
+
+  decrease_num_ref(pa);
   
+  return 0;
+}
+
+int cowfault_copyout(pagetable_t pagetable, uint64 va0)
+{
+  if (va0 >= MAXVA)
+    return -1;
+  
+  // check for segfault
+
+  // va = PGROUNDDOWN(va);
+  
+  pte_t *pte = walk(pagetable, va0, 0);
+  
+  if (pte == 0)
+    return -1;
+  
+  if ((*pte & PTE_U) == 0 || (*pte & PTE_V) == 0)   // not a user page or not valid
+    return -1;
+  
+  if ((*pte & PTE_COW) == 0)                        // not a COW page
+    return 0;
+
+  uint64 pa = PTE2PA(*pte);
+  uint64 pa_new = (uint64)kalloc();
+  
+  if (pa_new == 0){
+    return -1;
+  }
+
+  uint flags = PTE_FLAGS(*pte);
+  flags = (flags & ~PTE_COW) | PTE_W;
+ 
+  memmove((void *)pa_new, (void *)pa, PGSIZE);
+  // *pte = PA2PTE(pa_new) | PTE_U | PTE_V | PTE_W | PTE_X | PTE_R;  // give all permissions to the new page
+  // *pte &= ~PTE_COW;                                                 // remove COW flag
+  // free old memory mapped
+  uvmunmap(pagetable, va0, 1, 0);
+  mappages(pagetable, va0, PGSIZE, pa_new, flags);
+
   decrease_num_ref(pa);
   
   return 0;

@@ -368,11 +368,13 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    // int diff = dstva - va0;
     if (va0 > MAXVA)
       return -1;    
-    // if(cowfault(pagetable,va0)<0){
-	  //   return -1;
-    // }
+    if(cowfault_copyout(pagetable,va0)<0){
+	    return -1;
+    }
+
 
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
@@ -387,6 +389,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     dstva = va0 + PGSIZE;
   }
   return 0;
+    
 }
 
 // Copy from user to kernel.

@@ -2973,7 +2973,7 @@ runtests(struct test *tests, char *justone) {
     if((justone == 0) || strcmp(t->s, justone) == 0) {
       if(!run(t->f, t->s)){
         printf("SOME TESTS FAILED\n");
-        // return 1;
+        return 1;
       }
     }
   }
