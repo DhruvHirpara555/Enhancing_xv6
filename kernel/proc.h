@@ -111,12 +111,53 @@ struct proc {
   struct trapframe *trapframe_backup; // backup trapframe
   void (*alarm_handler)(void);        // default alarm handler
   uint64 a0_backup;                   // backup a0_register
+
+// FCFS
   uint64 start_ticks;                 // start time
+
+// Lottery scheduling
   int tickets;                        // tickets for lottery scheduler
+
+// PBS variables
   uint64 run_ticks;                   // run time from last time it was scheduled
   uint64 sleep_ticks;                 // sleep time from last time it was scheduled
   uint64 ready_ticks;                 // ready time from last time it was scheduled
   uint64 num_scheduled;               // number of times it was scheduled
   int static_priority;                // static priority
 
+
+// waitx variables
+  uint rtime;                   // How long the process ran for
+  uint ctime;                   // When was the process created
+  uint etime;
+
+//mlfq variables
+  int curr_q;                   // Current queue of the process
+  uint64 q_ticks[5];            // Ticks in each queue
+  uint64 cq_rticks;             // RunTicks in current queue after last switch
+  uint64 q_enter_time;          // Time when the process entered the queue
+  uint64 qued_fl  ;             // Flag to check if the process is qued
+
 };
+
+struct que_node {
+  struct proc *proc;
+  struct que_node *next;
+
+};
+
+struct que {
+  struct que_node *head;
+  struct que_node *tail;
+  int size;
+};
+
+struct que *que_init(void);
+void que_push(struct que *que, struct proc *proc);
+struct proc *que_pop(struct que *que);
+struct proc *que_front(struct que *que);
+int que_empty(struct que *que);
+void que_remove(struct que *que, struct proc *proc);
+
+
+

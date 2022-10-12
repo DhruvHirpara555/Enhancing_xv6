@@ -9,6 +9,8 @@
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
+struct que *mlfqs[MLFQ_LEVELS];
+
 
 struct proc *initproc;
 
@@ -58,6 +60,15 @@ procinit(void)
   }
 }
 
+void
+mlfq_init(void)
+{
+    for(int i = 0; i < MLFQ_LEVELS; i++){
+        mlfqs[i] = que_init();
+    }
+}
+
+// }
 // Must be called with interrupts disabled,
 // to prevent race with process being moved
 // to a different CPU.
@@ -158,6 +169,19 @@ found:
   // acquire(&tickslock);
   p->start_ticks = ticks;
   // release(&tickslock);
+  p->rtime = 0;
+  p->etime = 0;
+  p->ctime = ticks;
+
+  p->curr_q = 0;
+  for(int i = 0; i < MLFQ_LEVELS; i++){
+      p->q_ticks[i] = 0;
+  }
+  p->q_enter_time = ticks;
+  que_push(mlfqs[p->curr_q], p);
+  p->qued_fl = 1;
+  p->cq_rticks = 0;
+
 
 
   return p;
@@ -404,6 +428,8 @@ exit(int status)
   acquire(&p->lock);
   p->xstate = status;
   p->state = ZOMBIE;
+  p->etime = ticks;
+
 
   release(&wait_lock);
 
@@ -460,12 +486,78 @@ wait(uint64 addr)
     sleep(p, &wait_lock);  //DOC: wait-sleep
   }
 }
+int
+waitx(uint64 addr, uint* wtime, uint* rtime)
+{
+  struct proc *np;
+  int havekids, pid;
+  struct proc *p = myproc();
+
+  acquire(&wait_lock);
+
+  for(;;){
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for(np = proc; np < &proc[NPROC]; np++){
+      if(np->parent == p){
+        // make sure the child isn't still in exit() or swtch().
+        acquire(&np->lock);
+
+        havekids = 1;
+        if(np->state == ZOMBIE){
+          // Found one.
+          pid = np->pid;
+          *rtime = np->rtime;
+          *wtime = np->etime - np->ctime - np->rtime;
+          if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
+                                  sizeof(np->xstate)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          freeproc(np);
+          release(&np->lock);
+          release(&wait_lock);
+          return pid;
+        }
+        release(&np->lock);
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || p->killed){
+      release(&wait_lock);
+      return -1;
+    }
+
+    // Wait for a child to exit.
+    sleep(p, &wait_lock);  //DOC: wait-sleep
+  }
+}
+
+// void
+// update_time()
+// {
+//   struct proc* p;
+//   for (p = proc; p < &proc[NPROC]; p++) {
+//     acquire(&p->lock);
+//     if (p->state == RUNNING) {
+//       p->rtime++;
+//     }
+//     release(&p->lock);
+//   }
+// }
 
 void update_ticks(void){
   struct proc *p;
   for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
     if(p->state == RUNNING){
       p->run_ticks++;
+      p->rtime++;
+
+      p->cq_rticks++;
+      p->q_ticks[p->curr_q]++;
     }
     else if(p->state == SLEEPING){
       p->sleep_ticks++;
@@ -473,6 +565,7 @@ void update_ticks(void){
     else if(p->state == RUNNABLE){
       p->ready_ticks++;
     }
+    release(&p->lock);
   }
 }
 
@@ -493,8 +586,8 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-    // lottery_scheduler(c);
-    round_robin_scheduler(c);
+    lottery_scheduler(c);
+    // round_robin_scheduler(c);
     // fcfs_scheduler(c);
     // priority_scheduler(c);
     // for(p = proc; p < &proc[NPROC]; p++) {
@@ -520,20 +613,30 @@ void
 fcfs_scheduler(struct cpu *c)
 {
   struct proc *p;
-  struct proc *min_proc;
+  struct proc *min_proc = 0;
   uint64 min_sticks = -1;
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if(p->state == RUNNABLE) {
-      if(min_sticks == -1 || p->start_ticks < min_sticks) {
+      if(min_sticks == -1) {
+        min_sticks = p->start_ticks;
+        min_proc = p;
+        // continue;
+      }
+      if(p->start_ticks < min_sticks) {
+        release(&min_proc->lock);
         min_proc = p;
         min_sticks = p->start_ticks;
+        // continue;
       }
     }
-    release(&p->lock);
+    if(min_proc!= p){
+      release(&p->lock);
+    }
+
   }
   if(min_sticks != -1 ){
-    acquire(&min_proc->lock);
+    // acquire(&min_proc->lock);
     if(min_proc->state != RUNNABLE) {
       release(&min_proc->lock);
       return;
@@ -610,7 +713,7 @@ void lottery_scheduler(struct cpu *c)
 int dynamic_priority(struct proc *p)
 {
   int niceness;
-  if((p->num_scheduled == 0) || ((p->sleep_ticks + p->run_ticks) == 0)){
+  if(((p->sleep_ticks + p->run_ticks) == 0)){
     niceness = 5;
   }
   else{
@@ -635,45 +738,60 @@ priority_scheduler(struct cpu *c)
   struct proc *high_proc = 0;
   // int high_priority = 101;
   for (p = proc; p < &proc[NPROC]; p++){
+    // int flag = 0;
     acquire(&p->lock);
     if(p->state == RUNNABLE){
 
       // comparing .............
       if(high_proc == 0){
         high_proc = p;
+        // flag = 1;
       }
       else{
         int high_priority = dynamic_priority(high_proc);
         int curr_priority = dynamic_priority(p);
         if(curr_priority < high_priority){
+          release(&high_proc->lock);
           high_proc = p;
+          // flag = 1;
         }
         else if (curr_priority == high_priority) {
           if(p->num_scheduled < high_proc->num_scheduled){
+            release(&high_proc->lock);
             high_proc = p;
+            // flag = 1;
           }
           else if(p->num_scheduled == high_proc->num_scheduled){
+
             if(p->start_ticks < high_proc->start_ticks){
+              release(&high_proc->lock);
               high_proc = p;
+              // flag = 1;
             }
           }
         }
       }
-      // ... comparing done
+
+
 
     }
-    release(&p->lock);
+    if(p != high_proc){
+      release(&p->lock);
+    }
+
   }
 
   // scedueling
   if(high_proc != 0){
-    acquire(&high_proc->lock);
+    // acquire(&high_proc->lock);
     if(high_proc->state == RUNNABLE){
       high_proc->state = RUNNING;
-      c->proc = high_proc;
+
       high_proc->num_scheduled++;
       high_proc->run_ticks = 0;
       high_proc->sleep_ticks = 0;
+
+      c->proc = high_proc;
       swtch(&c->context, &high_proc->context);
       c->proc = 0;
     }
@@ -682,6 +800,64 @@ priority_scheduler(struct cpu *c)
 
 
 }
+
+void queue_switch()
+{
+  struct proc *p;
+
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE && p->curr_q != 0 && (ticks - p->q_enter_time) >= 100) {
+      que_remove(mlfqs[p->curr_q], p);
+      p->curr_q--;
+      p->q_enter_time = ticks;
+      p->cq_rticks = 0;
+      que_push(mlfqs[p->curr_q], p);
+    }
+  }
+
+
+}
+
+
+void mlfq_scheduler(struct cpu *c)
+{
+  // switch queue if any process is suppose to change ques
+  queue_switch();
+  struct proc *torun = 0;
+  for (int q = 0; q < MLFQ_LEVELS; q++) {
+    while(!que_empty(mlfqs[q])) {
+      struct proc *p = que_pop(q);
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        torun = p;
+        break;
+      }
+      release(&p->lock);
+    }
+    if(torun != 0) {
+      break;
+    }
+  }
+  if(torun != 0) {
+    torun->state = RUNNING;
+    c->proc = torun;
+    swtch(&c->context, &torun->context);
+    c->proc = 0;
+    torun->q_enter_time = ticks;
+    torun->cq_rticks++;
+    if(torun->curr_q != MLFQ_LEVELS - 1 && torun->cq_rticks >= (1 << torun->curr_q)) {
+      que_remove(mlfqs[torun->curr_q], torun);
+      torun->curr_q++;
+      torun->cq_rticks = 0;
+      que_push(mlfqs[torun->curr_q], torun);
+    }
+    release(&torun->lock);
+  }
+}
+
+
+
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -888,7 +1064,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s", p->pid, state, p->name);
+    printf("%d %s %s %d %d %d %d %d", p->pid, state, p->name,p->static_priority,p->start_ticks, p->num_scheduled, p->run_ticks,p->sleep_ticks);
     printf("\n");
   }
 }
@@ -949,4 +1125,31 @@ settickets(int number)
 {
   struct proc *p = myproc();
   p->tickets = number;
+}
+
+void
+set_priority(int priority, int pid)
+{
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    int flag = 0;
+    acquire(&p->lock);
+    if(p->pid == pid){
+      int old_priority = dynamic_priority(p);
+      p->static_priority = priority;
+      p->run_ticks = 0;
+      p->sleep_ticks = 0;
+      if(dynamic_priority(p) < old_priority){
+        flag = 1;
+      }
+
+      release(&p->lock);
+      if(flag == 1){
+        yield();
+      }
+      return;
+    }
+    release(&p->lock);
+  }
+  return;
 }
