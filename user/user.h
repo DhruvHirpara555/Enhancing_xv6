@@ -23,6 +23,11 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int trace(uint32);
+int sigalarm(uint64 ticks, void (*handler)(void));
+int sigreturn(void);
+int settickets(int);
+int waitx(int*, int* /*wtime*/, int* /*rtime*/);
+int setpriority(int, int);
 
 // ulib.c
 int stat(const char*, struct stat*);

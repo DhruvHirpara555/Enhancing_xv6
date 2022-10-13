@@ -107,7 +107,22 @@ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 void            trace(uint32 mask);
-
+void            sigalarm(uint64 ticks, void (*handler)(void));
+void            sigreturn(void);
+void            settickets(int);
+void            fcfs_scheduler(struct cpu *c);
+void            round_robin_scheduler(struct cpu *c);
+void            lottery_scheduler(struct cpu *c);
+int             rand(void);
+void            update_ticks(void);
+void            priority_scheduler(struct cpu *c);
+int            dynamic_priority(struct proc *p);
+int             waitx(uint64, uint*, uint*);
+void            update_time(void);
+void            set_priority(int priority, int pid);
+void            mlfq_scheduler(struct cpu *c);
+void            mlfq_init(void);
+void            queue_switch(void);
 // swtch.S
 void            swtch(struct context*, struct context*);
 
