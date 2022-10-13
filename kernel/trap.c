@@ -79,35 +79,43 @@ usertrap(void)
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2){
-  //   if(p->alarm_flag == 1){
+    #ifdef RR
+    if(p->alarm_flag == 1){
 
-  //     p->current_ticks++;
+      p->current_ticks++;
 
-  //     // set trapframe
-  //     if(p->alarm_ticks <= p->current_ticks){
-  //       p->alarm_flag = 0;
-  //       struct trapframe *tf= p->trapframe;
-  //       struct trapframe *tf_backup = (struct trapframe *)kalloc();
-  //       memmove(tf_backup, tf, sizeof(struct trapframe));
-  //       p->trapframe_backup = tf_backup;
-  //       p->trapframe->epc = (uint64 )p->alarm_handler;
-  //     }
+      // set trapframe
+      if(p->alarm_ticks <= p->current_ticks){
+        p->alarm_flag = 0;
+        struct trapframe *tf= p->trapframe;
+        struct trapframe *tf_backup = (struct trapframe *)kalloc();
+        memmove(tf_backup, tf, sizeof(struct trapframe));
+        p->trapframe_backup = tf_backup;
+        p->trapframe->epc = (uint64 )p->alarm_handler;
+      }
 
 
-  //   }
-    // yield();
-    // if((p->cq_rticks) >= (1 << (p->curr_q)) ){
-    //   if(p->curr_q < 4){
-    //     p->curr_q++;
-    //     p->cq_rticks = 0;
-    //   }
-    //   yield();
-    // }
-    // for(int q = 0; q < p->curr_q; q++){
-    //   if(mlfqs[q].size > 0){
-    //     yield();
-    //   }
-    // }
+    }
+    yield();
+    #endif
+    #ifdef MLFQ
+    if((p->cq_rticks) >= (1 << (p->curr_q)) ){
+      if(p->curr_q < 4){
+        p->curr_q++;
+        p->cq_rticks = 0;
+      }
+      yield();
+    }
+    for(int q = 0; q < p->curr_q; q++){
+      if(mlfqs[q].size > 0){
+        yield();
+      }
+    }
+    #endif
+    #ifdef LBS
+    yield();
+    #endif
+
 
   }
 
@@ -181,24 +189,34 @@ kerneltrap()
     // printf("processname: %s\n", myproc()->name);
     panic("kerneltrap");
   }
-  // struct proc*p = myproc();
+  #ifdef MLFQ
+  struct proc*p = myproc();
+  #endif
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
   {
-    // if((p->cq_rticks) >= (1 << (p->curr_q)) ){
-    //   if(p->curr_q < 4){
-    //     p->curr_q++;
+    #ifdef MLFQ
+    if((p->cq_rticks) >= (1 << (p->curr_q)) ){
+      if(p->curr_q < 4){
+        p->curr_q++;
 
-    //   }
-    //   p->cq_rticks = 0;
-    //   yield();
-    // }
-    // for(int q = 0; q < p->curr_q; q++){
-    //   if(mlfqs[q].size > 0){
-    //     yield();
-    //   }
-    // }
+      }
+      p->cq_rticks = 0;
+      yield();
+    }
+    for(int q = 0; q < p->curr_q; q++){
+      if(mlfqs[q].size > 0){
+        yield();
+      }
+    }
+    #endif
+    #ifdef RR
+    yield();
+    #endif
+    #ifdef LBS
+    yield();
+    #endif
   }
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.

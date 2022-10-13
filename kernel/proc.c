@@ -570,7 +570,7 @@ void update_ticks(void){
 
       p->cq_rticks++;
       p->q_ticks[p->curr_q]++;
-      queue_switch();
+
     }
     else if(p->state == SLEEPING){
       p->sleep_ticks++;
@@ -580,6 +580,8 @@ void update_ticks(void){
     }
     release(&p->lock);
   }
+
+  queue_switch();
 }
 
 // Per-CPU process scheduler.
@@ -599,11 +601,21 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-    // lottery_scheduler(c);
-    // round_robin_scheduler(c);
-    // fcfs_scheduler(c);
+    #ifdef LBS
+    lottery_scheduler(c);
+    #endif
+    #ifdef RR
+    round_robin_scheduler(c);
+    #endif
+    #ifdef FCFS
+    fcfs_scheduler(c);
+    #endif
+    #ifdef PBS
     priority_scheduler(c);
-    // mlfq_scheduler(c);
+    #endif
+    #ifdef MLFQ
+    mlfq_scheduler(c);
+    #endif
     // for(p = proc; p < &proc[NPROC]; p++) {
     //   acquire(&p->lock);
     //   if(p->state == RUNNABLE) {
@@ -700,27 +712,50 @@ void lottery_scheduler(struct cpu *c)
     if(p->state == RUNNABLE) {
       total_tickets += p->tickets;
     }
-    release(&p->lock);
+
+    // release(&p->lock);
   }
   if(total_tickets == 0) {
+    for(p = proc; p < &proc[NPROC]; p++) {
+      release(&p->lock);
+    }
     return;
   }
   int tochoose = rand() % total_tickets;
   int curr = 0;
+  int flag = 0;
+  struct proc* win = 0;
   for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
+    // acquire(&p->lock);
     if(p->state == RUNNABLE) {
       curr += p->tickets;
-      if(curr >= tochoose) {
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-        c->proc = 0;
-        release(&p->lock);
-        return;
+      if(curr >= tochoose && flag == 0) {
+        // p->state = RUNNING;
+        // c->proc = p;
+        // swtch(&c->context, &p->context);
+        // c->proc = 0;
+        // release(&p->lock);
+        // return;
+        win = p;
+        flag = 1;
+        continue;
+
       }
     }
     release(&p->lock);
+  }
+
+  if(win != 0 ) {
+    // acquire(&win->lock);
+    if(win->state != RUNNABLE) {
+      release(&win->lock);
+      return;
+    }
+    win->state = RUNNING;
+    c->proc = win;
+    swtch(&c->context, &win->context);
+    c->proc = 0;
+    release(&win->lock);
   }
 }
 
@@ -846,7 +881,7 @@ void queue_switch()
 void mlfq_scheduler(struct cpu *c)
 {
   // switch queue if any process is suppose to change ques
-  // queue_switch();
+  queue_switch();
   // que all unqueued processes to queue their curr_q
   struct proc *p;
   for(p = proc; p < &proc[NPROC]; p++) {
