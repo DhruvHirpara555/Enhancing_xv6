@@ -321,9 +321,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    *pte &= (~PTE_W);   // make it read-only
+    *pte |= PTE_COW;    // copy on write
     flags = PTE_FLAGS(*pte);
-    flags |= PTE_COW;   // copy on write
-    flags &= (~PTE_W);    // make it read-only
 
     // increase ref count
     increase_num_ref(pa);
@@ -369,12 +369,14 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     // int diff = dstva - va0;
+
     if (va0 > MAXVA)
       return -1;    
-    if(cowfault_copyout(pagetable,va0)<0){
+    
+    // added to handle if dstva points to a physical memory marked read-only by CoW
+    if(cowfault(pagetable,va0) < 0){ 
 	    return -1;
     }
-
 
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)

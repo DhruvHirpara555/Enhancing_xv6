@@ -65,8 +65,6 @@ void            kfree(void *);
 void            kinit(void);
 void            increase_num_ref(uint64 pa);
 void            decrease_num_ref(uint64 pa);
-void            acquire_rc_lock();
-void            release_rc_lock();
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -153,7 +151,6 @@ void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
 int             cowfault(pagetable_t pagetable, uint64 va);
-int             cowfault_copyout(pagetable_t pagetable, uint64 va);
 
 // uart.c
 void            uartinit(void);
