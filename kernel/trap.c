@@ -16,6 +16,8 @@ void kernelvec();
 
 extern int devintr();
 
+int cowfault(pagetable_t pagetable, uint64 va);
+
 void
 trapinit(void)
 {
@@ -65,7 +67,18 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  }
+  else if (r_scause() == 15) {
+    // page fault
+    if ((cowfault(p->pagetable, r_stval()) )< 0)
+    {
+      //  p->killed = 1;
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      setkilled(p);
+    }
+  }
+  else if((which_dev = devintr()) != 0){
     // ok
 
   } else {
@@ -78,24 +91,7 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2){
-    #ifdef RR
-    if(p->alarm_flag == 1){
-
-      p->current_ticks++;
-
-      // set trapframe
-      if(p->alarm_ticks <= p->current_ticks){
-        p->alarm_flag = 0;
-        struct trapframe *tf= p->trapframe;
-        struct trapframe *tf_backup = (struct trapframe *)kalloc();
-        memmove(tf_backup, tf, sizeof(struct trapframe));
-        p->trapframe_backup = tf_backup;
-        p->trapframe->epc = (uint64 )p->alarm_handler;
-      }
-
-
-    }
+  if(which_dev == 2)
     yield();
     #endif
     #ifdef MLFQ
@@ -284,3 +280,43 @@ devintr()
   }
 }
 
+int cowfault(pagetable_t pagetable, uint64 va)
+{
+  if (va >= MAXVA)
+    return -1;
+
+  if (va == 0)
+    return -1;
+
+  // check for segfault
+
+  // va = PGROUNDDOWN(va);
+
+  pte_t *pte = walk(pagetable, va, 0);
+
+  if (pte == 0)
+    return -1;
+
+  if ((*pte & PTE_U) == 0 || (*pte & PTE_V) == 0)   // not a user page or not valid
+    return -1;
+
+  if ((*pte & PTE_COW) == 0)                        // not a COW page
+    return 0;
+
+  uint64 pa = PTE2PA(*pte);
+  uint64 pa_new = (uint64)kalloc();
+
+  if (pa_new == 0){
+    return -1;
+  }
+
+
+  memmove((void *)pa_new, (void *)pa, PGSIZE);
+  *pte = PA2PTE(pa_new) | PTE_U | PTE_V | PTE_W | PTE_X | PTE_R;  // give all permissions to the new page
+  *pte &= ~PTE_COW;                                                 // remove COW flag
+
+  // decrease_num_ref(pa);
+  kfree((void *)pa);
+
+  return 0;
+}

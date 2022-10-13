@@ -2441,7 +2441,10 @@ textwrite(char *s)
   if(xstatus == -1)  // kernel killed child?
     exit(0);
   else
+  {
+    printf("exit status: %d\n", xstatus);
     exit(xstatus);
+  }
 }
 
 // regression test. copyin(), copyout(), and copyinstr() used to cast

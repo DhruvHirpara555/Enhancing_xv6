@@ -5,6 +5,7 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+// #include "spinlock.h"
 
 /*
  * the kernel's page table.
@@ -185,7 +186,9 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
+      // decrease_num_ref(pa);
       kfree((void*)pa);
+
     }
     *pte = 0;
   }
@@ -241,6 +244,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
     memset(mem, 0, PGSIZE);
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
       kfree(mem);
+      // decrease_num_ref((uint64)mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -284,6 +288,7 @@ freewalk(pagetable_t pagetable)
     }
   }
   kfree((void*)pagetable);
+  // decrease_num_ref((uint64)pagetable);
 }
 
 // Free user memory pages,
@@ -308,7 +313,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -316,12 +321,20 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    *pte &= (~PTE_W);   // make it read-only
+    *pte |= PTE_COW;    // copy on write
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+
+    // increase ref count
+    increase_num_ref(pa);
+    // flush tlb
+    sfence_vma();
+    
+    // if((mem = kalloc()) == 0)        // these are removed because we don't need to allocate new physical memory (to revert, pass (uint64)mem in place of pa in mappages)
+      // goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      // kfree(mem);        // removed for copy-on-write
       goto err;
     }
   }
@@ -355,6 +368,16 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    // int diff = dstva - va0;
+
+    if (va0 > MAXVA)
+      return -1;    
+    
+    // added to handle if dstva points to a physical memory marked read-only by CoW
+    if(cowfault(pagetable,va0) < 0){ 
+	    return -1;
+    }
+
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
@@ -368,6 +391,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     dstva = va0 + PGSIZE;
   }
   return 0;
+    
 }
 
 // Copy from user to kernel.

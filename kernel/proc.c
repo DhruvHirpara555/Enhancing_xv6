@@ -197,6 +197,7 @@ static void
 freeproc(struct proc *p)
 {
   if(p->trapframe)
+    // decrease_num_ref((uint64)(p->trapframe));
     kfree((void*)p->trapframe);
   p->trapframe = 0;
   if(p->pagetable)
