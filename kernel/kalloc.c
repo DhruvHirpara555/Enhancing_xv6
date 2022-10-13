@@ -11,7 +11,7 @@
 
 void freerange(void *pa_start, void *pa_end);
 void increase_num_ref(uint64 pa);
-void decrease_num_ref(uint64 pa);
+// void decrease_num_ref(uint64 pa);
 
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
@@ -41,7 +41,9 @@ freerange(void *pa_start, void *pa_end)
   p = (char*)PGROUNDUP((uint64)pa_start);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
   {
-    kfree(p);
+    num_ref_to_page[(uint64)p/PGSIZE] = 1;
+    kfree(p);    
+    // decrease_num_ref((uint64)p);
   }
 
 }
@@ -51,7 +53,7 @@ freerange(void *pa_start, void *pa_end)
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
 void
-kfree(void *pa)
+kfree_original(void *pa)
 {
   struct run *r;
 
@@ -111,8 +113,9 @@ void increase_num_ref(uint64 pa)
   release(&kmem.lock);
 }
 
-void decrease_num_ref(uint64 pa)
+void kfree(void *g_pa)
 {
+  uint64 pa = (uint64)g_pa;
   // handle error
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("decrease_num_ref");
@@ -127,7 +130,7 @@ void decrease_num_ref(uint64 pa)
   if(num_ref_to_page[pa/PGSIZE] == 0)
   {
     release(&kmem.lock);
-    kfree((void*)pa);
+    kfree_original((void*)pa);
     return;
   }
 

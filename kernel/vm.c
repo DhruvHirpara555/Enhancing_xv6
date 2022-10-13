@@ -186,8 +186,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      decrease_num_ref(pa);
-      // kfree((void*)pa);
+      // decrease_num_ref(pa);
+      kfree((void*)pa);
 
     }
     *pte = 0;
@@ -243,8 +243,8 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
-      // kfree(mem);
-      decrease_num_ref((uint64)mem);
+      kfree(mem);
+      // decrease_num_ref((uint64)mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -287,8 +287,8 @@ freewalk(pagetable_t pagetable)
       panic("freewalk: leaf");
     }
   }
-  // kfree((void*)pagetable);
-  decrease_num_ref((uint64)pagetable);
+  kfree((void*)pagetable);
+  // decrease_num_ref((uint64)pagetable);
 }
 
 // Free user memory pages,

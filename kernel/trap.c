@@ -272,7 +272,8 @@ int cowfault(pagetable_t pagetable, uint64 va)
   *pte = PA2PTE(pa_new) | PTE_U | PTE_V | PTE_W | PTE_X | PTE_R;  // give all permissions to the new page
   *pte &= ~PTE_COW;                                                 // remove COW flag
 
-  decrease_num_ref(pa);
+  // decrease_num_ref(pa);
+  kfree((void *)pa);
   
   return 0;
 }
