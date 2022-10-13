@@ -9,7 +9,7 @@
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
-struct que *mlfqs[MLFQ_LEVELS];
+extern struct que mlfqs[MLFQ_LEVELS];
 
 
 struct proc *initproc;
@@ -64,7 +64,9 @@ void
 mlfq_init(void)
 {
     for(int i = 0; i < MLFQ_LEVELS; i++){
-        mlfqs[i] = que_init();
+        mlfqs[i].head = 0;
+        mlfqs[i].tail = 0;
+        mlfqs[i].size = 0;
     }
 }
 
@@ -178,7 +180,8 @@ found:
       p->q_ticks[i] = 0;
   }
   p->q_enter_time = ticks;
-  que_push(mlfqs[p->curr_q], p);
+  que_push(&mlfqs[0], p);
+  // printf("%d\n",mlfqs[0]->size);
   p->qued_fl = 1;
   p->cq_rticks = 0;
 
@@ -220,6 +223,15 @@ freeproc(struct proc *p)
   p->ready_ticks = 0;
   p->static_priority = 0;
   p->num_scheduled = 0;
+
+
+  p->curr_q = 0;
+  p->qued_fl = 0;
+  for(int i = 0; i < MLFQ_LEVELS; i++){
+      p->q_ticks[i] = 0;
+  }
+  p->q_enter_time = 0;
+  p->cq_rticks = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -558,6 +570,7 @@ void update_ticks(void){
 
       p->cq_rticks++;
       p->q_ticks[p->curr_q]++;
+      queue_switch();
     }
     else if(p->state == SLEEPING){
       p->sleep_ticks++;
@@ -586,10 +599,11 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-    lottery_scheduler(c);
+    // lottery_scheduler(c);
     // round_robin_scheduler(c);
     // fcfs_scheduler(c);
-    // priority_scheduler(c);
+    priority_scheduler(c);
+    // mlfq_scheduler(c);
     // for(p = proc; p < &proc[NPROC]; p++) {
     //   acquire(&p->lock);
     //   if(p->state == RUNNABLE) {
@@ -673,7 +687,7 @@ void round_robin_scheduler(struct cpu *c)
 int rand(void)
 {
   static unsigned long int next = 1;
-  next = next * 1103515245 + 12345;
+  next = next * 1103515245 + ticks;
   return((unsigned)(next/65536) % 32768);
 }
 
@@ -803,19 +817,28 @@ priority_scheduler(struct cpu *c)
 
 void queue_switch()
 {
-  struct proc *p;
 
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->state == RUNNABLE && p->curr_q != 0 && (ticks - p->q_enter_time) >= 100) {
-      que_remove(mlfqs[p->curr_q], p);
-      p->curr_q--;
-      p->q_enter_time = ticks;
-      p->cq_rticks = 0;
-      que_push(mlfqs[p->curr_q], p);
+
+  for(int q=1; q<MLFQ_LEVELS; q++){
+
+    while(!que_empty(&mlfqs[q])){
+      struct proc *p = que_front(&mlfqs[q]);
+      acquire(&p->lock);
+      if(p->state == RUNNABLE && (ticks - p->q_enter_time) > 25){
+        que_pop(&mlfqs[q]);
+        p->curr_q--;
+        // p->q_enter_time = ticks;
+        p->cq_rticks = 0;
+        que_push(&mlfqs[q-1], p);
+        release(&p->lock);
+      }
+      else{
+        release(&p->lock);
+        break;
+      }
+
     }
   }
-
 
 }
 
@@ -823,16 +846,30 @@ void queue_switch()
 void mlfq_scheduler(struct cpu *c)
 {
   // switch queue if any process is suppose to change ques
-  queue_switch();
+  // queue_switch();
+  // que all unqueued processes to queue their curr_q
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE && p->qued_fl == 0) {
+      p->q_enter_time = ticks;
+      p->cq_rticks = 0;
+      p->qued_fl = 1;
+      que_push(&mlfqs[p->curr_q], p);
+    }
+    release(&p->lock);
+  }
   struct proc *torun = 0;
   for (int q = 0; q < MLFQ_LEVELS; q++) {
-    while(!que_empty(mlfqs[q])) {
-      struct proc *p = que_pop(q);
+    while(!que_empty(&mlfqs[q])) {
+      struct proc *p = que_pop(&mlfqs[q]);
       acquire(&p->lock);
+      p->qued_fl = 0;
       if(p->state == RUNNABLE) {
         torun = p;
         break;
       }
+
       release(&p->lock);
     }
     if(torun != 0) {
@@ -845,13 +882,22 @@ void mlfq_scheduler(struct cpu *c)
     swtch(&c->context, &torun->context);
     c->proc = 0;
     torun->q_enter_time = ticks;
-    torun->cq_rticks++;
-    if(torun->curr_q != MLFQ_LEVELS - 1 && torun->cq_rticks >= (1 << torun->curr_q)) {
-      que_remove(mlfqs[torun->curr_q], torun);
-      torun->curr_q++;
-      torun->cq_rticks = 0;
-      que_push(mlfqs[torun->curr_q], torun);
-    }
+    torun->cq_rticks = 0;
+    torun->qued_fl = 1;
+    // if(torun->cq_rticks >= (1 << torun->curr_q)) {
+    //   if(torun->curr_q < MLFQ_LEVELS - 1) {
+    //     torun->curr_q++;
+    //   }
+    //   torun->cq_rticks = 0;
+    //   torun->qued_fl = 1;
+    //   que_push(&mlfqs[torun->curr_q], torun);
+    // }
+    // else {
+    //   torun->qued_fl = 1;
+    //   que_pushfront(&mlfqs[torun->curr_q], torun);
+    // }
+    que_push(&mlfqs[torun->curr_q], torun);
+
     release(&torun->lock);
   }
 }
@@ -1064,7 +1110,8 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s %d %d %d %d %d", p->pid, state, p->name,p->static_priority,p->start_ticks, p->num_scheduled, p->run_ticks,p->sleep_ticks);
+    printf("%d %s %s %d %d %d %d %d ", p->pid, state, p->name, p->q_ticks[0], p->q_ticks[1], p->q_ticks[2], p->q_ticks[3], p->q_ticks[4]);
+    // printf("%d %d %d %d %d",mlfqs[0]->head,mlfqs[1]->head,mlfqs[2]->head,mlfqs[3]->head,mlfqs[4]->head);
     printf("\n");
   }
 }
@@ -1152,4 +1199,174 @@ set_priority(int priority, int pid)
     release(&p->lock);
   }
   return;
+}
+
+
+
+
+// queue functions using ll
+// struct que
+// *que_init(void){
+//     struct que *que = (struct que *)kalloc();
+//     que->head = 0;
+//     que->tail = 0;
+//     que->size = 0;
+//     return que;
+// }
+
+// void
+// que_push(struct que *que, struct proc *proc){
+//     struct que_node *node = (struct que_node *)kalloc();
+//     // printf("pushing in  %d\n",proc->curr_q);
+//     node->proc = proc;
+//     node->next = 0;
+//     if(que->head == 0){
+//         que->head = node;
+//         que->tail = node;
+//     }else{
+//         que->tail->next = node;
+//         que->tail = node;
+//     }
+//     que->size++;
+// }
+
+// struct proc
+// *que_pop(struct que *que){
+//     if(que->head == 0){
+//         return 0;
+//     }
+//     struct que_node *node = que->head;
+//     struct proc *proc = node->proc;
+//     que->head = node->next;
+//     if(que->head == 0){
+//         que->tail = 0;
+//     }
+//     kfree((void *)node);
+//     que->size--;
+//     return proc;
+// }
+
+// struct proc
+// *que_front(struct que *que){
+//     if(que->head == 0){
+//         return 0;
+//     }
+//     return que->head->proc;
+// }
+
+// int
+// que_empty(struct que *que){
+//     return que->head == 0;
+// }
+
+// void
+// que_pushfront(struct que *que, struct proc *proc){
+//     struct que_node *node = (struct que_node *)kalloc();
+//     // printf("pushfront in %d\n", proc->curr_q);
+//     node->proc = proc;
+//     node->next = que->head;
+//     que->head = node;
+//     if(que->tail == 0){
+//         que->tail = node;
+//     }
+//     que->size++;
+// }
+
+// void
+// que_remove(struct que *que, struct proc *proc){
+//     struct que_node *node = que->head;
+//     struct que_node *prev = 0;
+//     while(node != 0){
+//         if(node->proc == proc){
+//             if(prev == 0){
+//                 que->head = node->next;
+//             }else{
+//                 prev->next = node->next;
+//             }
+//             if(node->next == 0){
+//                 que->tail = prev;
+//             }
+//             kfree((void *)node);
+//             que->size--;
+//             return;
+//         }
+//         prev = node;
+//         node = node->next;
+//     }
+//     que->size--;
+// }
+
+
+
+// queue functions using array
+struct que
+*que_init(void){
+    struct que *que = (struct que *)kalloc();
+    que->head = 0;
+    que->tail = 0;
+    que->size = 0;
+    return que;
+}
+
+void
+que_push(struct que *que, struct proc *proc){
+    // printf("pushing in  %d\n",proc->curr_q);
+    if(que->size == 0){
+        que->head = 0;
+        que->tail = 0;
+    }
+    que->procs[que->tail] = proc;
+    que->tail = (que->tail + 1) % NPROC;
+    que->size++;
+}
+
+struct proc
+*que_pop(struct que *que){
+    if(que->size == 0){
+        return 0;
+    }
+    struct proc *proc = que->procs[que->head];
+    que->head = (que->head + 1) % NPROC;
+    que->size--;
+    return proc;
+}
+
+struct proc
+*que_front(struct que *que){
+    if(que->size == 0){
+        return 0;
+    }
+    return que->procs[que->head];
+}
+
+int
+que_empty(struct que *que){
+    return que->size == 0;
+}
+
+void
+que_pushfront(struct que *que, struct proc *proc){
+    // printf("pushfront in %d\n", proc->curr_q);
+    if(que->size == 0){
+        que->head = 0;
+        que->tail = 0;
+    }
+    que->head = (que->head - 1 + NPROC) % NPROC;
+    que->procs[que->head] = proc;
+    que->size++;
+}
+
+void
+que_remove(struct que *que, struct proc *proc){
+    int i;
+    for(i = 0; i < que->size; i++){
+        if(que->procs[(que->head + i) % NPROC] == proc){
+            break;
+        }
+    }
+    for(; i < que->size - 1; i++){
+        que->procs[(que->head + i) % NPROC] = que->procs[(que->head + i + 1) % NPROC];
+    }
+    que->tail = (que->tail - 1 + NPROC) % NPROC;
+    que->size--;
 }

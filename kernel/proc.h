@@ -140,16 +140,13 @@ struct proc {
 
 };
 
-struct que_node {
-  struct proc *proc;
-  struct que_node *next;
 
-};
 
 struct que {
-  struct que_node *head;
-  struct que_node *tail;
+  int head;
+  int tail;
   int size;
+  struct proc *procs[NPROC];
 };
 
 struct que *que_init(void);
@@ -158,6 +155,6 @@ struct proc *que_pop(struct que *que);
 struct proc *que_front(struct que *que);
 int que_empty(struct que *que);
 void que_remove(struct que *que, struct proc *proc);
-
+void que_pushfront(struct que *que, struct proc *proc);
 
 

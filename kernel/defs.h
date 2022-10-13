@@ -120,6 +120,9 @@ int            dynamic_priority(struct proc *p);
 int             waitx(uint64, uint*, uint*);
 void            update_time(void);
 void            set_priority(int priority, int pid);
+void            mlfq_scheduler(struct cpu *c);
+void            mlfq_init(void);
+void            queue_switch(void);
 // swtch.S
 void            swtch(struct context*, struct context*);
 

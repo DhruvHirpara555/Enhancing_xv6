@@ -2793,12 +2793,15 @@ execout(char *s)
         if(a == 0xffffffffffffffffLL)
           break;
         *(char*)(a + 4096 - 1) = 1;
-      }
 
+      }
       // free a few pages, in order to let exec() make some
       // progress.
       for(int i = 0; i < avail; i++)
+      {
+        printf("freeing %d", i);
         sbrk(-4096);
+      }
 
       close(1);
       char *args[] = { "echo", "x", 0 };
@@ -2970,7 +2973,7 @@ runtests(struct test *tests, char *justone) {
     if((justone == 0) || strcmp(t->s, justone) == 0) {
       if(!run(t->f, t->s)){
         printf("SOME TESTS FAILED\n");
-        return 1;
+        return -11;
       }
     }
   }
