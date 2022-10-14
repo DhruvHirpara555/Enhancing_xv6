@@ -154,7 +154,6 @@ void que_push(struct que *que, struct proc *proc);
 struct proc *que_pop(struct que *que);
 struct proc *que_front(struct que *que);
 int que_empty(struct que *que);
-void que_remove(struct que *que, struct proc *proc);
 void que_pushfront(struct que *que, struct proc *proc);
 
 

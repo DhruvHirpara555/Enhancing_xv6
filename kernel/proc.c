@@ -162,7 +162,7 @@ found:
   p->alarm_ticks = 0;
   p->current_ticks = 0;
   p->alarm_handler = 0;
-  p->tickets = 10;
+  p->tickets = 1;
   p->sleep_ticks = 0;
   p->run_ticks = 0;
   p->ready_ticks = 0;
@@ -860,7 +860,7 @@ void queue_switch()
     while(!que_empty(&mlfqs[q])){
       struct proc *p = que_front(&mlfqs[q]);
       acquire(&p->lock);
-      if(p->state == RUNNABLE && (ticks - p->q_enter_time) > 25){
+      if(p->state == RUNNABLE && (ticks - p->q_enter_time) > 30){
         que_pop(&mlfqs[q]);
         p->curr_q--;
         // p->q_enter_time = ticks;
@@ -1146,7 +1146,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s %d %d %d %d %d ", p->pid, state, p->name, p->q_ticks[0], p->q_ticks[1], p->q_ticks[2], p->q_ticks[3], p->q_ticks[4]);
+    printf("%d %s %s %d %d %d %d %d %d", p->pid, state, p->name, p->q_ticks[0], p->q_ticks[1], p->q_ticks[2], p->q_ticks[3], p->q_ticks[4], p->tickets);
     // printf("%d %d %d %d %d",mlfqs[0]->head,mlfqs[1]->head,mlfqs[2]->head,mlfqs[3]->head,mlfqs[4]->head);
     printf("\n");
   }
@@ -1392,17 +1392,3 @@ que_pushfront(struct que *que, struct proc *proc){
     que->size++;
 }
 
-void
-que_remove(struct que *que, struct proc *proc){
-    int i;
-    for(i = 0; i < que->size; i++){
-        if(que->procs[(que->head + i) % NPROC] == proc){
-            break;
-        }
-    }
-    for(; i < que->size - 1; i++){
-        que->procs[(que->head + i) % NPROC] = que->procs[(que->head + i + 1) % NPROC];
-    }
-    que->tail = (que->tail - 1 + NPROC) % NPROC;
-    que->size--;
-}
