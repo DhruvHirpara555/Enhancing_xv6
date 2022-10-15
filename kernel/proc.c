@@ -580,7 +580,11 @@ void update_ticks(void){
       p->ready_ticks++;
     }
     release(&p->lock);
+    // if(p->pid != 0 && p->pid != 1 && p->pid != 2){
+    //   printf("%d %d %d\n", p->pid, p->curr_q, ticks);
+    // }
   }
+
 
   queue_switch();
 }
@@ -1146,7 +1150,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s %d %d %d %d %d %d", p->pid, state, p->name, p->q_ticks[0], p->q_ticks[1], p->q_ticks[2], p->q_ticks[3], p->q_ticks[4], p->tickets);
+    printf("%d %s %s %d %d %d %d %d %d %d", p->pid, state, p->name, p->q_ticks[0], p->q_ticks[1], p->q_ticks[2], p->q_ticks[3], p->q_ticks[4], p->tickets, p->static_priority);
     // printf("%d %d %d %d %d",mlfqs[0]->head,mlfqs[1]->head,mlfqs[2]->head,mlfqs[3]->head,mlfqs[4]->head);
     printf("\n");
   }
@@ -1210,19 +1214,20 @@ settickets(int number)
   p->tickets = number;
 }
 
-void
+int
 set_priority(int priority, int pid)
 {
   struct proc *p;
+  int old_priority = -1;
   for(p = proc; p < &proc[NPROC]; p++){
     int flag = 0;
     acquire(&p->lock);
     if(p->pid == pid){
-      int old_priority = dynamic_priority(p);
+      old_priority = p->static_priority;
       p->static_priority = priority;
       p->run_ticks = 0;
       p->sleep_ticks = 0;
-      if(dynamic_priority(p) < old_priority){
+      if(p->static_priority < old_priority){
         flag = 1;
       }
 
@@ -1230,11 +1235,11 @@ set_priority(int priority, int pid)
       if(flag == 1){
         yield();
       }
-      return;
+      return old_priority;
     }
     release(&p->lock);
   }
-  return;
+  return old_priority;
 }
 
 

@@ -150,6 +150,6 @@ sys_setpriority(void)
   int pid;
   argint(0, &priority);
   argint(1, &pid);
-  set_priority(priority, pid);
-  return 0;
+
+  return set_priority(priority, pid);
 }
