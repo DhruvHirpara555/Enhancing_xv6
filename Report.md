@@ -159,4 +159,4 @@ The above results are obtained by running `schedulertest` on a single CPU.
 
 ### Scheduling Graph of MLFQ
 
-<img src="/home/dhruv/OSNftw/Enhancing_xv6/Enhancing_xv6/output.png" alt="output" style="zoom:150%;" />
+<img src="./output.png" alt="output" style="zoom:150%;" />
